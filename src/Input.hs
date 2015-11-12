@@ -5,6 +5,7 @@ import qualified Data.Map.Lazy as M
 import Types
 import "GLFW-b" Graphics.UI.GLFW as GLFW
 
+getUserInput :: Window -> (UserInput -> IO a) -> IO a
 getUserInput win userInputSink = 
     let
         getMapping :: (Bounded a, Ord a, Enum a) => (Window -> a -> IO Bool) -> Window -> IO (M.Map a Bool)
