@@ -8,12 +8,12 @@ import "GLFW-b" Graphics.UI.GLFW as GLFW
 getUserInput :: Window -> (UserInput -> IO a) -> IO a
 getUserInput win userInputSink = 
     let
-        getMapping :: (Bounded a, Ord a, Enum a) => (Window -> a -> IO Bool) -> Window -> IO (M.Map a Bool)
-        getMapping action win = M.fromList <$> (sequence $ map (\x -> action win x >>= \result -> return (x, result)) [minBound..maxBound])
+        getMapping :: (Bounded a, Ord a, Enum a) => (Window -> a -> IO Bool) -> Window -> a -> a -> IO (M.Map a Bool) 
+        getMapping action win first last = M.fromList <$> (sequence $ map (\x -> action win x >>= \result -> return (x, result)) [first..last])
     in do
       pollEvents
-      keyPressMapping <- getMapping keyIsPressed win
-      mouseClickMapping <- getMapping mouseButtonIsClicked win
+      keyPressMapping <- getMapping keyIsPressed win Key'Unknown Key'Menu
+      mouseClickMapping <- getMapping mouseButtonIsClicked win MouseButton'1 MouseButton'3
       [u, d, l, r] <- sequence $ map (keyIsPressed win) [Key'Up, Key'Down, Key'Left, Key'Right]
       cur <- getCursorPos win
       userInputSink $ UserInput { directions = Directions u d l r
