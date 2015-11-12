@@ -6,6 +6,7 @@ import Input
 import Graphics.Gloss
 import Graphics.Gloss.Rendering
 
+import GHC.Float
 import FRP.Elerea.Simple
 import System.Exit ( exitSuccess )
 import Control.Concurrent (threadDelay)
@@ -18,7 +19,10 @@ import Types
 playerSpeed = 10
 
 
-initObjs = M.fromList [("player", GameObject { objPos = (0,0), objRender = Circle 5.0 })]
+initObjs = M.fromList [ ("player", GameObject { objPos = (0,0), objRender = Circle 5.0 })
+                      , ("boxex", GameObject {})
+                      ]
+           
 
 initStatus = GameNotStarted
     
@@ -60,7 +64,8 @@ gameUpdate win userInput glossState config = do
 renderGame :: Window -> State -> (M.Map ObjectName GameObject, GameStatus) -> IO ()
 renderGame win glossState (objs, status) = do
   displayPicture (500, 500) white glossState 1.0 $
-                 Pictures $ map (objRender . snd) $ M.toList objs
+                 Pictures $ map (\x -> let (xpos, ypos) = objPos x
+                                       in translate (double2Float xpos) (double2Float ypos) $ objRender x) $ map snd $ M.toList objs
   swapBuffers win
   return ()
 
@@ -73,7 +78,7 @@ rules = map generateRule [("player", playerMove)]
 generateRule :: (ObjectName, RuleFunc) -> Rule
 generateRule (name, f) = \(map, status) userInput -> case M.lookup name map of
                                                        Just ori -> let (newObj, newStatus) = f (ori, status) userInput
-                                                                   in (M.adjust (const newObj) name map, newStatus)
+                                                                   in ("object \"" <> name <> "\" moved pos: " <> (show $ objPos newObj)) `trace` (M.adjust (const newObj) name map, newStatus)
                                                        Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status)
 
 

@@ -30,7 +30,7 @@ keyIsPressed win key = isPressed <$> GLFW.getKey win key
 
 mouseButtonIsClicked :: Window -> MouseButton -> IO Bool
 mouseButtonIsClicked win key = isClicked <$> GLFW.getMouseButton win key
-                       
+
                 
 isPressed :: KeyState -> Bool
 isPressed KeyState'Pressed = True
