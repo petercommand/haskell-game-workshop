@@ -20,7 +20,7 @@ playerSpeed = 10
 
 
 initObjs = M.fromList [ ("player", GameObject { objPos = (0,0), objRender = Circle 5.0 })
-                      , ("boxex", GameObject {})
+                      , ("boxes", GameObject [])
                       ]
            
 
