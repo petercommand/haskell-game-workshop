@@ -15,7 +15,7 @@ import Control.Monad (when, join)
 import Control.Monad.Fix (fix)
 import Data.Monoid
 import Debug.Trace
-
+import Data.Time.Clock.UTC
 
 playerSpeed :: Double
 playerSpeed = 10.0
@@ -64,7 +64,9 @@ startGame config = do
 
 gameUpdate :: Window -> Signal UserInput -> State -> Config -> SignalGen (Signal (IO (), IO ())) 
 gameUpdate win userInput glossState config = do
-  result <- transfer (initObjs, initStatus) ruleUpdate userInput
+  time <- effectful getCurrentTime
+  deltaTime <- diffUTCTime <$> time <*> delay time
+  result <- transfer2 (initObjs, initStatus) ruleUpdate userInput deltaTime
   return $ do
     action <- renderGame win glossState config <$> result
     status <- processStatus <$> result
@@ -98,8 +100,8 @@ renderGame win glossState config (objs, status) =
         swapBuffers win
         return ()
 
-ruleUpdate :: UserInput -> (M.Map ObjectName GameObject, GameStatus) -> (M.Map ObjectName GameObject, GameStatus)
-ruleUpdate userInput init = foldr (\f acc -> f acc userInput) init rules
+ruleUpdate :: UserInput -> NominalDiffTime -> (M.Map ObjectName GameObject, GameStatus) -> (M.Map ObjectName GameObject, GameStatus)
+ruleUpdate userInput init dt = foldr (\f acc -> f acc userInput dt) init rules
 
 rules :: [Rule]
 rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "player" playerMoveRule
@@ -110,11 +112,11 @@ rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "playe
 
 
 playerMoveRule :: ObjectRuleFunc
-playerMoveRule (obj@(GameObject {}), status) userInput = let newObj = case directions userInput of
-                                                                    Directions True _ _ _ -> moveObj obj (0, playerSpeed)
-                                                                    Directions _ True _ _ -> moveObj obj (0, -playerSpeed)
-                                                                    Directions _ _ True _ -> moveObj obj (-playerSpeed, 0)
-                                                                    Directions _ _ _ True -> moveObj obj (playerSpeed, 0)
+playerMoveRule (obj@(GameObject {}), status) userInput dt = let newObj = case directions userInput of
+                                                                    Directions True _ _ _ -> moveObj obj (0, playerSpeed * dt)
+                                                                    Directions _ True _ _ -> moveObj obj (0, -playerSpeed * dt)
+                                                                    Directions _ _ True _ -> moveObj obj (-playerSpeed * dt, 0)
+                                                                    Directions _ _ _ True -> moveObj obj (playerSpeed * dt, 0)
                                                                     Directions False False False False -> obj
                                                      in (newObj, status)
 playerMoveRule x _ = x

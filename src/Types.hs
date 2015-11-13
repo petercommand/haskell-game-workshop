@@ -6,8 +6,8 @@ import "GLFW-b" Graphics.UI.GLFW as GLFW
 import Graphics.Gloss
 import Data.Monoid
 import Debug.Trace
+import Data.Time.Clock.UTC
 
-    
 
 class Def a where
     def :: a -- default value
@@ -65,20 +65,21 @@ data StatusRule = StatusRule StatusRuleFunc
 
                 
 instance RuleFunc ObjectRule where
-   generateRule (ObjectRule name f) =  \(map, status) userInput -> case M.lookup name map of
-                                                                     Just ori -> let (newObj, newStatus) = f (ori, status) userInput
-                                                                                 in ("object \"" <> name <> "\" pos: " <> (show $ objPos newObj))
-                                                                                        `trace`
-                                                                                        (M.adjust (const newObj) name map, newStatus)
-                                                                     Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status) 
+   generateRule (ObjectRule name f) =
+       \(map, status) userInput dt -> case M.lookup name map of
+                                        Just ori -> let (newObj, newStatus) = f (ori, status) userInput dt
+                                                    in ("object \"" <> name <> "\" pos: " <> (show $ objPos newObj))
+                                                           `trace`
+                                                           (M.adjust (const newObj) name map, newStatus)
+                                        Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status) 
 instance RuleFunc StatusRule where
-    generateRule (StatusRule f) = \(map, status) userInput -> (map, f status userInput)
+    generateRule (StatusRule f) = \(map, status) userInput dt -> (map, f status userInput)
                                                                                 
-type ObjectRuleFunc = (GameObject, GameStatus) -> UserInput -> (GameObject, GameStatus)
+type ObjectRuleFunc = (GameObject, GameStatus) -> UserInput -> NominalDiffTime -> (GameObject, GameStatus)
 type StatusRuleFunc = GameStatus -> UserInput -> GameStatus
 
     
-type Rule = (M.Map ObjectName GameObject, GameStatus) -> UserInput -> (M.Map ObjectName GameObject, GameStatus)
+type Rule = (M.Map ObjectName GameObject, GameStatus) -> UserInput -> NominalDiffTime -> (M.Map ObjectName GameObject, GameStatus)
 
 
 data GameStatus = GameNotStarted | GameStarted | GameEnded | GameExit deriving Show
