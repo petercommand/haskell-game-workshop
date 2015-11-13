@@ -6,7 +6,7 @@ import "GLFW-b" Graphics.UI.GLFW as GLFW
 import Graphics.Gloss
 import Data.Monoid
 import Debug.Trace
-import Data.Time.Clock.UTC
+import Data.Time.Clock
 
 
 class Def a where

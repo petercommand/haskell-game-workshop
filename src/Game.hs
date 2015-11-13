@@ -15,10 +15,10 @@ import Control.Monad (when, join)
 import Control.Monad.Fix (fix)
 import Data.Monoid
 import Debug.Trace
-import Data.Time.Clock.UTC
+import Data.Time.Clock
 
 playerSpeed :: Double
-playerSpeed = 10.0
+playerSpeed = 100.0
 
 initObjs :: M.Map ObjectName GameObject
 initObjs = M.fromList [ ("player", GameObject { objPos = (0,0), objRender = Circle 5.0 })
@@ -49,7 +49,8 @@ startGame config = do
     go win = do
       (userInput, userInputSink) <- external def
       glossState <- initState
-      game <- start $ gameUpdate win userInput glossState config
+      time <- getCurrentTime
+      game <- start $ gameUpdate win userInput glossState config time
       fix $ \loop -> do
                getUserInput win userInputSink
                (gameAction, statusAction) <- game
@@ -59,13 +60,11 @@ startGame config = do
                loop
 
 
-
-  
-
-gameUpdate :: Window -> Signal UserInput -> State -> Config -> SignalGen (Signal (IO (), IO ())) 
-gameUpdate win userInput glossState config = do
+gameUpdate :: Window -> Signal UserInput -> State -> Config -> UTCTime -> SignalGen (Signal (IO (), IO ())) 
+gameUpdate win userInput glossState config currentTime = do
   time <- effectful getCurrentTime
-  deltaTime <- diffUTCTime <$> time <*> delay time
+  lastTime <- delay currentTime time
+  let deltaTime = diffUTCTime <$> time <*> lastTime
   result <- transfer2 (initObjs, initStatus) ruleUpdate userInput deltaTime
   return $ do
     action <- renderGame win glossState config <$> result
@@ -101,7 +100,7 @@ renderGame win glossState config (objs, status) =
         return ()
 
 ruleUpdate :: UserInput -> NominalDiffTime -> (M.Map ObjectName GameObject, GameStatus) -> (M.Map ObjectName GameObject, GameStatus)
-ruleUpdate userInput init dt = foldr (\f acc -> f acc userInput dt) init rules
+ruleUpdate userInput dt init = foldr (\f acc -> f acc userInput dt) init rules
 
 rules :: [Rule]
 rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "player" playerMoveRule
@@ -112,14 +111,17 @@ rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "playe
 
 
 playerMoveRule :: ObjectRuleFunc
-playerMoveRule (obj@(GameObject {}), status) userInput dt = let newObj = case directions userInput of
-                                                                    Directions True _ _ _ -> moveObj obj (0, playerSpeed * dt)
-                                                                    Directions _ True _ _ -> moveObj obj (0, -playerSpeed * dt)
-                                                                    Directions _ _ True _ -> moveObj obj (-playerSpeed * dt, 0)
-                                                                    Directions _ _ _ True -> moveObj obj (playerSpeed * dt, 0)
-                                                                    Directions False False False False -> obj
-                                                     in (newObj, status)
-playerMoveRule x _ = x
+playerMoveRule (obj@(GameObject {}), status) userInput dt =
+    let
+        t = realToFrac dt
+        newObj = case directions userInput of
+                   Directions True _ _ _ -> moveObj obj (0, playerSpeed * t)
+                   Directions _ True _ _ -> moveObj obj (0, -playerSpeed * t)
+                   Directions _ _ True _ -> moveObj obj (-playerSpeed * t, 0)
+                   Directions _ _ _ True -> moveObj obj (playerSpeed * t, 0)
+                   Directions False False False False -> obj
+    in (newObj, status)
+playerMoveRule x _ _ = x
 
 exitRule :: StatusRuleFunc
 exitRule status userInput =
