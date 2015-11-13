@@ -3,6 +3,7 @@ module Game where
 import "GLFW-b" Graphics.UI.GLFW as GLFW
 import qualified Data.Map as M
 import Input
+import Types
 import Graphics.Gloss
 import Graphics.Gloss.Rendering
 
@@ -14,7 +15,7 @@ import Control.Monad (when, join)
 import Control.Monad.Fix (fix)
 import Data.Monoid
 import Debug.Trace
-import Types
+
 
 playerSpeed :: Double
 playerSpeed = 10.0
@@ -49,18 +50,32 @@ startGame config = do
       (userInput, userInputSink) <- external def
       glossState <- initState
       game <- start $ gameUpdate win userInput glossState config
---      hotkey <- start $ keyCommand
       fix $ \loop -> do
                getUserInput win userInputSink
-               join game
---               join hotkey
+               (gameAction, statusAction) <- game
+               gameAction
+               statusAction
                threadDelay 20000
                loop
-gameUpdate :: Window -> Signal UserInput -> State -> Config -> SignalGen (Signal (IO ())) 
+
+
+
+  
+
+gameUpdate :: Window -> Signal UserInput -> State -> Config -> SignalGen (Signal (IO (), IO ())) 
 gameUpdate win userInput glossState config = do
   result <- transfer (initObjs, initStatus) ruleUpdate userInput
-  return $ renderGame win glossState config <$> result
+  return $ do
+    action <- renderGame win glossState config <$> result
+    status <- processStatus <$> result
+    return (action, status)
 
+
+processStatus :: (M.Map ObjectName GameObject, GameStatus) -> IO ()
+processStatus (_, status) = case status of
+                              GameExit -> exitSuccess
+                              otherwise -> return ()
+  
 
 renderGame :: Window -> State -> Config -> (M.Map ObjectName GameObject, GameStatus) -> IO ()
 renderGame win glossState config (objs, status) =
@@ -87,25 +102,39 @@ ruleUpdate :: UserInput -> (M.Map ObjectName GameObject, GameStatus) -> (M.Map O
 ruleUpdate userInput init = foldr (\f acc -> f acc userInput) init rules
 
 rules :: [Rule]
-rules = map generateRule [("player", playerMove)]
-
-generateRule :: (ObjectName, RuleFunc) -> Rule
-generateRule (name, f) = \(map, status) userInput -> case M.lookup name map of
-                                                       Just ori -> let (newObj, newStatus) = f (ori, status) userInput
-                                                                   in ("object \"" <> name <> "\" pos: " <> (show $ objPos newObj)) `trace` (M.adjust (const newObj) name map, newStatus)
-                                                       Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status)
+rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "player" playerMoveRule
+                                                , ToRuleFunc $ StatusRule exitRule
+                                                ]
 
 
-playerMove :: RuleFunc
-playerMove (obj@(GameObject {}), status) userInput = let newObj = case directions userInput of
+
+
+playerMoveRule :: ObjectRuleFunc
+playerMoveRule (obj@(GameObject {}), status) userInput = let newObj = case directions userInput of
                                                                     Directions True _ _ _ -> moveObj obj (0, playerSpeed)
                                                                     Directions _ True _ _ -> moveObj obj (0, -playerSpeed)
                                                                     Directions _ _ True _ -> moveObj obj (-playerSpeed, 0)
                                                                     Directions _ _ _ True -> moveObj obj (playerSpeed, 0)
                                                                     Directions False False False False -> obj
                                                      in (newObj, status)
-playerMove x _ = x
+playerMoveRule x _ = x
 
+exitRule :: StatusRuleFunc
+exitRule status userInput =
+    let
+        keyMap = pressedKeys userInput
+        ctrlC = case ctrlPressed keyMap of
+                  True -> case keyPressed keyMap Key'C of
+                            True -> True
+                            False -> False
+                  False -> False
+    in
+      case ctrlC of
+        True -> GameExit
+        False -> status
+        
+                                          
 moveObj :: GameObject -> (Double, Double) -> GameObject
-moveObj obj (dX, dY) = let (x, y) = objPos obj
-                       in obj { objPos = (x + dX, y + dY) }
+moveObj obj@(GameObject {}) (dX, dY) = let (x, y) = objPos obj
+                                       in obj { objPos = (x + dX, y + dY) }
+moveObj (GameObjects x) delta = GameObjects (map (\x -> moveObj x delta) x)

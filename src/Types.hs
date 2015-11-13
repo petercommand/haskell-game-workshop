@@ -1,10 +1,13 @@
+{-# LANGUAGE ExistentialQuantification #-}
 module Types where
 
 import qualified Data.Map.Lazy as M
 import "GLFW-b" Graphics.UI.GLFW as GLFW
 import Graphics.Gloss
+import Data.Monoid
+import Debug.Trace
 
-
+    
 
 class Def a where
     def :: a -- default value
@@ -45,15 +48,40 @@ data Angle = Degree Double | Radian Double
 
 
 data GameObject = GameObject { objPos :: (Double, Double)
+                             , objRot :: Angle
                              , objRender :: Picture
                              }
                 | GameObjects [GameObject]
 
-type RuleFunc = (GameObject, GameStatus) -> UserInput -> (GameObject, GameStatus)
+
+class RuleFunc a where
+    generateRule :: a -> Rule
+
+data ToRuleFunc = forall a. RuleFunc a => ToRuleFunc a
+
+
+data ObjectRule = ObjectRule ObjectName ObjectRuleFunc
+data StatusRule = StatusRule StatusRuleFunc
+
+                
+instance RuleFunc ObjectRule where
+   generateRule (ObjectRule name f) =  \(map, status) userInput -> case M.lookup name map of
+                                                                     Just ori -> let (newObj, newStatus) = f (ori, status) userInput
+                                                                                 in ("object \"" <> name <> "\" pos: " <> (show $ objPos newObj))
+                                                                                        `trace`
+                                                                                        (M.adjust (const newObj) name map, newStatus)
+                                                                     Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status) 
+instance RuleFunc StatusRule where
+    generateRule (StatusRule f) = \(map, status) userInput -> (map, f status userInput)
+                                                                                
+type ObjectRuleFunc = (GameObject, GameStatus) -> UserInput -> (GameObject, GameStatus)
+type StatusRuleFunc = GameStatus -> UserInput -> GameStatus
+
+    
 type Rule = (M.Map ObjectName GameObject, GameStatus) -> UserInput -> (M.Map ObjectName GameObject, GameStatus)
 
 
-data GameStatus = GameNotStarted | GameStarted | GameEnded
+data GameStatus = GameNotStarted | GameStarted | GameEnded | GameExit deriving Show
 
 
 data GLFWKeys = GLFWModifierKey | GLFWKey deriving Enum
@@ -70,3 +98,6 @@ instance Bounded Key where
 instance Bounded MouseButton where
     minBound = MouseButton'1
     maxBound = MouseButton'8
+
+
+               
