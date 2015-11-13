@@ -10,20 +10,21 @@ import GHC.Float
 import FRP.Elerea.Simple
 import System.Exit ( exitSuccess )
 import Control.Concurrent (threadDelay)
-import Control.Monad (when, unless, join)
+import Control.Monad (when, join)
 import Control.Monad.Fix (fix)
 import Data.Monoid
 import Debug.Trace
 import Types
 
-playerSpeed = 10
+playerSpeed :: Double
+playerSpeed = 10.0
 
-
+initObjs :: M.Map ObjectName GameObject
 initObjs = M.fromList [ ("player", GameObject { objPos = (0,0), objRender = Circle 5.0 })
-                      , ("boxes", GameObject [])
+                      , ("boxes", GameObjects [])
                       ]
            
-
+initStatus :: GameStatus
 initStatus = GameNotStarted
     
 startGame :: Config -> IO ()
@@ -58,16 +59,29 @@ startGame config = do
 gameUpdate :: Window -> Signal UserInput -> State -> Config -> SignalGen (Signal (IO ())) 
 gameUpdate win userInput glossState config = do
   result <- transfer (initObjs, initStatus) ruleUpdate userInput
-  return $ renderGame win glossState <$> result
+  return $ renderGame win glossState config <$> result
 
 
-renderGame :: Window -> State -> (M.Map ObjectName GameObject, GameStatus) -> IO ()
-renderGame win glossState (objs, status) = do
-  displayPicture (500, 500) white glossState 1.0 $
-                 Pictures $ map (\x -> let (xpos, ypos) = objPos x
-                                       in translate (double2Float xpos) (double2Float ypos) $ objRender x) $ map snd $ M.toList objs
-  swapBuffers win
-  return ()
+renderGame :: Window -> State -> Config -> (M.Map ObjectName GameObject, GameStatus) -> IO ()
+renderGame win glossState config (objs, status) =
+    let
+        w = width config
+        h = height config
+        drawObj :: [GameObject] -> IO ()
+        drawObj (x@(GameObject {}):xs) =
+            let (xpos, ypos) = objPos x
+            in
+              do
+                displayPicture (w, h) white glossState 1.0 $
+                               translate (double2Float xpos) (double2Float ypos) $ objRender x
+                drawObj xs
+        drawObj ((GameObjects y):xs) = drawObj y >> drawObj xs
+        drawObj [] = return ()
+    in
+      do
+        drawObj $ map snd $ M.toList objs
+        swapBuffers win
+        return ()
 
 ruleUpdate :: UserInput -> (M.Map ObjectName GameObject, GameStatus) -> (M.Map ObjectName GameObject, GameStatus)
 ruleUpdate userInput init = foldr (\f acc -> f acc userInput) init rules
@@ -83,13 +97,14 @@ generateRule (name, f) = \(map, status) userInput -> case M.lookup name map of
 
 
 playerMove :: RuleFunc
-playerMove (obj, status) userInput = let newObj = case directions userInput of
-                                                    Directions True _ _ _ -> moveObj obj (0, playerSpeed)
-                                                    Directions _ True _ _ -> moveObj obj (0, -playerSpeed)
-                                                    Directions _ _ True _ -> moveObj obj (-playerSpeed, 0)
-                                                    Directions _ _ _ True -> moveObj obj (playerSpeed, 0)
-                                                    Directions False False False False -> obj
-                                     in (newObj, status)
+playerMove (obj@(GameObject {}), status) userInput = let newObj = case directions userInput of
+                                                                    Directions True _ _ _ -> moveObj obj (0, playerSpeed)
+                                                                    Directions _ True _ _ -> moveObj obj (0, -playerSpeed)
+                                                                    Directions _ _ True _ -> moveObj obj (-playerSpeed, 0)
+                                                                    Directions _ _ _ True -> moveObj obj (playerSpeed, 0)
+                                                                    Directions False False False False -> obj
+                                                     in (newObj, status)
+playerMove x _ = x
 
 moveObj :: GameObject -> (Double, Double) -> GameObject
 moveObj obj (dX, dY) = let (x, y) = objPos obj

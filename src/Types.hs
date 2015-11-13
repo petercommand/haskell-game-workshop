@@ -3,7 +3,7 @@ module Types where
 import qualified Data.Map.Lazy as M
 import "GLFW-b" Graphics.UI.GLFW as GLFW
 import Graphics.Gloss
-import Graphics.Gloss.Rendering
+
 
 
 class Def a where
