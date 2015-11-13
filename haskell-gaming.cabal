@@ -29,5 +29,5 @@ executable haskell-gaming
                  , random == 1.1
                  , time >= 1.5
   hs-source-dirs: src     
-  ghc-options: -Wall -fwarn-incomplete-record-updates -package time
+  ghc-options: -Wall -fwarn-incomplete-record-updates -v
   default-language:    Haskell2010
