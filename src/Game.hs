@@ -92,7 +92,7 @@ rules = map generateRule [("player", playerMove)]
 generateRule :: (ObjectName, RuleFunc) -> Rule
 generateRule (name, f) = \(map, status) userInput -> case M.lookup name map of
                                                        Just ori -> let (newObj, newStatus) = f (ori, status) userInput
-                                                                   in ("object \"" <> name <> "\" moved pos: " <> (show $ objPos newObj)) `trace` (M.adjust (const newObj) name map, newStatus)
+                                                                   in ("object \"" <> name <> "\" pos: " <> (show $ objPos newObj)) `trace` (M.adjust (const newObj) name map, newStatus)
                                                        Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status)
 
 
