@@ -16,6 +16,12 @@ instance Def UserInput where
                     , pressedKeys = M.empty
                     }
 
+instance Def Config where
+    def = Config { isFullscreen = False
+                 , width = 600
+                 , height = 600
+                 }
+
 data Config = Config { isFullscreen :: Bool
                      , width :: Int
                      , height :: Int
