@@ -25,7 +25,7 @@ initObjs :: M.Map ObjectName GameObject
 initObjs = M.fromList [ ("player", def { objPos = (0,0), objRot = Degree 0, objRender = Circle 5.0 })
                       , ("boxes", GameObjects [])
                       ]
-           
+
 initStatus :: GameStatus
 initStatus = GameNotStarted
     
@@ -50,27 +50,27 @@ startGame config = do
     go win = do
       (userInput, userInputSink) <- external def
       glossState <- initState
-      time <- getCurrentTime
-      game <- start $ gameUpdate win userInput glossState config time
+      initTime <- getCurrentTime
+      game <- start $ gameUpdate win userInput glossState config initTime
       fix $ \loop -> do
                getUserInput win userInputSink
-               (gameAction, statusAction) <- game
+               join game
                gameAction
                statusAction
                threadDelay 20000
                loop
 
 
-gameUpdate :: Window -> Signal UserInput -> State -> Config -> UTCTime -> SignalGen (Signal (IO (), IO ())) 
-gameUpdate win userInput glossState config currentTime = do
+gameUpdate :: Window -> Signal UserInput -> State -> Config -> UTCTime -> SignalGen (Signal (IO ())) 
+gameUpdate win userInput glossState config initTime = do
   time <- effectful getCurrentTime
-  lastTime <- delay currentTime time
+  lastTime <- delay initTime time
   let deltaTime = diffUTCTime <$> time <*> lastTime
   result <- transfer2 (initObjs, initStatus) ruleUpdate userInput deltaTime
   return $ do
     action <- renderGame win glossState config <$> result
     status <- processStatus <$> result
-    return (action, status)
+    return (action >> status)
 
 
 processStatus :: (M.Map ObjectName GameObject, GameStatus) -> IO ()

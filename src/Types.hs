@@ -71,7 +71,7 @@ data GameObject = GameObject { objType :: ObjectType
                              , visible :: Bool
                              , collidable :: Bool
                              , collisionOpt :: CollisionOpt
-                             , delete :: Bool 
+                             , delete :: Bool -- mark for deletion
                              }
                 | GameObjects [GameObject]
 
