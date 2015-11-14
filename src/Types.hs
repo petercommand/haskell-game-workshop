@@ -25,10 +25,26 @@ instance Def Config where
                  , height = 600
                  }
 
+instance Def GameObject where
+    def = GameObject { objType = OtherObj
+                     , objPos = (0, 0)
+                     , objRot = Degree 0
+                     , objScale = (0, 0)
+                     , objRender = Circle 5
+                     , visible = True
+                     , collidable = False
+                     , collisionOpt = def
+                     , delete = False -- mark for deletion
+                     }
+
+
 data Config = Config { isFullscreen :: Bool
                      , width :: Int
                      , height :: Int
                      }
+data CollisionOption = CollisionOption { collisionType :: CollisionType
+                                       , collisionCallback :: CollisionCallback
+                                       }
 type Up = Bool
 type Down = Bool
 type Left = Bool
@@ -47,9 +63,15 @@ type Position = (Double, Double)
 data Angle = Degree Double | Radian Double
 
 
-data GameObject = GameObject { objPos :: (Double, Double)
+data GameObject = GameObject { objType :: ObjectType
+                             , objPos :: (Double, Double)
                              , objRot :: Angle
+                             , objScale :: (Double, Double)
                              , objRender :: Picture
+                             , visible :: Bool
+                             , collidable :: Bool
+                             , collisionOpt :: CollisionOpt
+                             , delete :: Bool 
                              }
                 | GameObjects [GameObject]
 
@@ -63,18 +85,16 @@ data ToRuleFunc = forall a. RuleFunc a => ToRuleFunc a
 data ObjectRule = ObjectRule ObjectName ObjectRuleFunc
 data StatusRule = StatusRule StatusRuleFunc
 
-                
+
 instance RuleFunc ObjectRule where
    generateRule (ObjectRule name f) =
        \(map, status) userInput dt -> case M.lookup name map of
                                         Just ori -> let (newObj, newStatus) = f (ori, status) userInput dt
-                                                    in ("object \"" <> name <> "\" pos: " <> (show $ objPos newObj))
-                                                           `trace`
-                                                           (M.adjust (const newObj) name map, newStatus)
+                                                    in (M.adjust (const newObj) name map, newStatus)
                                         Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status) 
 instance RuleFunc StatusRule where
     generateRule (StatusRule f) = \(map, status) userInput dt -> (map, f status userInput)
-                                                                                
+   
 type ObjectRuleFunc = (GameObject, GameStatus) -> UserInput -> NominalDiffTime -> (GameObject, GameStatus)
 type StatusRuleFunc = GameStatus -> UserInput -> GameStatus
 
@@ -85,7 +105,6 @@ type Rule = (M.Map ObjectName GameObject, GameStatus) -> UserInput -> NominalDif
 data GameStatus = GameNotStarted | GameStarted | GameEnded | GameExit deriving Show
 
 
-data GLFWKeys = GLFWModifierKey | GLFWKey deriving Enum
 
 type PressedKeys a = M.Map a Bool
 type MouseClick a = M.Map a Bool
@@ -99,6 +118,3 @@ instance Bounded Key where
 instance Bounded MouseButton where
     minBound = MouseButton'1
     maxBound = MouseButton'8
-
-
-               

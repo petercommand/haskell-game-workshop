@@ -4,6 +4,7 @@ import "GLFW-b" Graphics.UI.GLFW as GLFW
 import qualified Data.Map as M
 import Input
 import Types
+import Rendering
 import Graphics.Gloss
 import Graphics.Gloss.Rendering
 
@@ -21,7 +22,7 @@ playerSpeed :: Double
 playerSpeed = 100.0
 
 initObjs :: M.Map ObjectName GameObject
-initObjs = M.fromList [ ("player", GameObject { objPos = (0,0), objRender = Circle 5.0 })
+initObjs = M.fromList [ ("player", def { objPos = (0,0), objRot = Degree 0, objRender = Circle 5.0 })
                       , ("boxes", GameObjects [])
                       ]
            
@@ -75,35 +76,16 @@ gameUpdate win userInput glossState config currentTime = do
 processStatus :: (M.Map ObjectName GameObject, GameStatus) -> IO ()
 processStatus (_, status) = case status of
                               GameExit -> exitSuccess
-                              otherwise -> return ()
+                              _ -> return ()
   
 
-renderGame :: Window -> State -> Config -> (M.Map ObjectName GameObject, GameStatus) -> IO ()
-renderGame win glossState config (objs, status) =
-    let
-        w = width config
-        h = height config
-        drawObj :: [GameObject] -> IO ()
-        drawObj (x@(GameObject {}):xs) =
-            let (xpos, ypos) = objPos x
-            in
-              do
-                displayPicture (w, h) white glossState 1.0 $
-                               translate (double2Float xpos) (double2Float ypos) $ objRender x
-                drawObj xs
-        drawObj ((GameObjects y):xs) = drawObj y >> drawObj xs
-        drawObj [] = return ()
-    in
-      do
-        drawObj $ map snd $ M.toList objs
-        swapBuffers win
-        return ()
 
 ruleUpdate :: UserInput -> NominalDiffTime -> (M.Map ObjectName GameObject, GameStatus) -> (M.Map ObjectName GameObject, GameStatus)
 ruleUpdate userInput dt init = foldr (\f acc -> f acc userInput dt) init rules
 
 rules :: [Rule]
 rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "player" playerMoveRule
+                                                , ToRuleFunc $ CollisionRule collisionRule
                                                 , ToRuleFunc $ StatusRule exitRule
                                                 ]
 
