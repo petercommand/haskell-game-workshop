@@ -10,7 +10,7 @@ import Graphics.Gloss.Rendering
 
 import GHC.Float
 import FRP.Elerea.Simple
-import System.Exit ( exitSuccess )
+import System.Exit ( exitSuccess, exitFailure )
 import Control.Concurrent (threadDelay)
 import Control.Monad (when, join)
 import Control.Monad.Fix (fix)
@@ -22,9 +22,13 @@ playerSpeed :: Double
 playerSpeed = 100.0
 
 initObjs :: M.Map ObjectName GameObject
-initObjs = M.fromList [ ("player", def { objPos = (0,0), objRot = Degree 0, objRender = Circle 5.0 })
+initObjs = M.fromList [ ("player", def { objType = Player, objPos = (0,0), objRot = Degree 0, objRender = Circle 5.0 })
                       , ("boxes", GameObjects [])
                       ]
+initGameState = GameState { objs = initObjs
+                          , collisionObjs = M.empty
+                          }
+              
 
 initStatus :: GameStatus
 initStatus = GameNotStarted
@@ -55,8 +59,6 @@ startGame config = do
       fix $ \loop -> do
                getUserInput win userInputSink
                join game
-               gameAction
-               statusAction
                threadDelay 20000
                loop
 
@@ -66,21 +68,24 @@ gameUpdate win userInput glossState config initTime = do
   time <- effectful getCurrentTime
   lastTime <- delay initTime time
   let deltaTime = diffUTCTime <$> time <*> lastTime
-  result <- transfer2 (initObjs, initStatus) ruleUpdate userInput deltaTime
+  result <- transfer2 (initGameState, initStatus) ruleUpdate userInput deltaTime
   return $ do
     action <- renderGame win glossState config <$> result
     status <- processStatus <$> result
     return (action >> status)
 
 
-processStatus :: (M.Map ObjectName GameObject, GameStatus) -> IO ()
+processStatus :: (GameState, GameStatus) -> IO ()
 processStatus (_, status) = case status of
-                              GameExit -> exitSuccess
+                              GameExit GameExitSuccess -> exitSuccess
+                              GameExit (GameExitFailure reason) -> do
+                                          putStrLn reason
+                                          exitFailure
                               _ -> return ()
   
 
 
-ruleUpdate :: UserInput -> NominalDiffTime -> (M.Map ObjectName GameObject, GameStatus) -> (M.Map ObjectName GameObject, GameStatus)
+ruleUpdate :: UserInput -> NominalDiffTime -> (GameState, GameStatus) -> (GameState, GameStatus)
 ruleUpdate userInput dt init = foldr (\f acc -> f acc userInput dt) init rules
 
 rules :: [Rule]
@@ -105,6 +110,12 @@ playerMoveRule (obj@(GameObject {}), status) userInput dt =
     in (newObj, status)
 playerMoveRule x _ _ = x
 
+collisionRule :: CollisionRuleFunc
+collisionRule (gameState, status) userInput dt =
+    let
+        t = realToFrac dt
+    in "collisionRule not implemented" `trace` (gameState, status)
+                       
 exitRule :: StatusRuleFunc
 exitRule status userInput =
     let
@@ -116,10 +127,10 @@ exitRule status userInput =
                   False -> False
     in
       case ctrlC of
-        True -> GameExit
+        True -> GameExit GameExitSuccess
         False -> status
         
-                                          
+
 moveObj :: GameObject -> (Double, Double) -> GameObject
 moveObj obj@(GameObject {}) (dX, dY) = let (x, y) = objPos obj
                                        in obj { objPos = (x + dX, y + dY) }

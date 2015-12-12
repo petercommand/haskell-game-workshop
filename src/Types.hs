@@ -5,9 +5,10 @@ import qualified Data.Map.Lazy as M
 import "GLFW-b" Graphics.UI.GLFW as GLFW
 import Graphics.Gloss
 import Data.Monoid
+import qualified Data.Set as Set
 import Debug.Trace
 import Data.Time.Clock
-
+import Control.Monad.State.Lazy
 
 class Def a where
     def :: a -- default value
@@ -32,19 +33,18 @@ instance Def GameObject where
                      , objScale = (0, 0)
                      , objRender = Circle 5
                      , visible = True
-                     , collidable = False
-                     , collisionOpt = def
                      , delete = False -- mark for deletion
                      }
 
+data ObjectType = Player | Box | OtherObj
 
 data Config = Config { isFullscreen :: Bool
                      , width :: Int
                      , height :: Int
                      }
-data CollisionOption = CollisionOption { collisionType :: CollisionType
-                                       , collisionCallback :: CollisionCallback
-                                       }
+type ThisObject = GameObject
+type OtherObject = GameObject
+newtype CollisionCallback = CollisionCallback (ThisObject -> OtherObject -> ThisObject)
 type Up = Bool
 type Down = Bool
 type Left = Bool
@@ -59,9 +59,30 @@ data UserInput = UserInput { directions  :: Directions
                            }
 
 type Position = (Double, Double)
-
+type Radius = Double
+type Box = (Position, Position) -- ((Low,Low) (High, High))
 data Angle = Degree Double | Radian Double
 
+data GameState = GameState { objs :: M.Map ObjectName GameObject
+                           , collisionObjs :: M.Map ObjectName CollisionOption
+                           , objActions :: M.Map ObjectName ObjectAction
+                           }
+
+data ObjectAction = ObjectAction ObjectName ActionInfo (State ActionState ActionFinished)
+data ActionInfo = ActionInfo { actionType :: ActionType
+                             , actionDuration :: Double
+                             , actionFunc :: ActionFunc
+                             }
+type TimeDiff = Double
+data ActionFunc = ActionFunc (TimeDiff -> State ActionState ActionFinished)
+data ActionState = ActionState { currentActionTime :: TimeDiff
+                               }
+data ActionFinished = ActionFinished | ActionNotFinished
+data ActionType = ActionMove
+data CollisionObj = CollisionObj GameObject CollisionOption
+data CollisionOption = CollisionOption { collisionType :: CollisionType
+                                       , collisionCallback :: CollisionCallback
+                                       }
 
 data GameObject = GameObject { objType :: ObjectType
                              , objPos :: (Double, Double)
@@ -69,11 +90,11 @@ data GameObject = GameObject { objType :: ObjectType
                              , objScale :: (Double, Double)
                              , objRender :: Picture
                              , visible :: Bool
-                             , collidable :: Bool
-                             , collisionOpt :: CollisionOpt
                              , delete :: Bool -- mark for deletion
                              }
                 | GameObjects [GameObject]
+
+data CollisionType = BoxCollision Box | CircleCollision Position Radius
 
 
 class RuleFunc a where
@@ -84,26 +105,29 @@ data ToRuleFunc = forall a. RuleFunc a => ToRuleFunc a
 
 data ObjectRule = ObjectRule ObjectName ObjectRuleFunc
 data StatusRule = StatusRule StatusRuleFunc
-
+data CollisionRule = CollisionRule CollisionRuleFunc
 
 instance RuleFunc ObjectRule where
    generateRule (ObjectRule name f) =
-       \(map, status) userInput dt -> case M.lookup name map of
-                                        Just ori -> let (newObj, newStatus) = f (ori, status) userInput dt
-                                                    in (M.adjust (const newObj) name map, newStatus)
-                                        Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (map, status) 
+       \(gs@(GameState { objs = objMap }), status) userInput dt -> case M.lookup name objMap of
+                                                                Just ori -> let (newObj, newStatus) = f (ori, status) userInput dt
+                                                                                newMap = M.adjust (const newObj) name objMap
+                                                                            in (gs { objs = newMap}, newStatus)
+                                                                Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (gs, status)
 instance RuleFunc StatusRule where
-    generateRule (StatusRule f) = \(map, status) userInput dt -> (map, f status userInput)
-   
+    generateRule (StatusRule f) = \(gameState, status) userInput dt -> (gameState, f status userInput)
+instance RuleFunc CollisionRule where
+    generateRule (CollisionRule f) = f
+
 type ObjectRuleFunc = (GameObject, GameStatus) -> UserInput -> NominalDiffTime -> (GameObject, GameStatus)
 type StatusRuleFunc = GameStatus -> UserInput -> GameStatus
-
+type CollisionRuleFunc = Rule
     
-type Rule = (M.Map ObjectName GameObject, GameStatus) -> UserInput -> NominalDiffTime -> (M.Map ObjectName GameObject, GameStatus)
+type Rule = (GameState, GameStatus) -> UserInput -> NominalDiffTime -> (GameState, GameStatus)
 
 
-data GameStatus = GameNotStarted | GameStarted | GameEnded | GameExit deriving Show
-
+data GameStatus = GameNotStarted | GameStarted | GameEnded | GameExit GameExitReason deriving Show
+data GameExitReason = GameExitSuccess | GameExitFailure String deriving Show
 
 
 type PressedKeys a = M.Map a Bool
