@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE RecursiveDo, ScopedTypeVariables #-}
 module Game where
 import "GLFW-b" Graphics.UI.GLFW as GLFW
 import qualified Data.Map as M
@@ -17,18 +17,18 @@ import Control.Monad.Fix (fix)
 import Data.Monoid
 import Debug.Trace
 import Data.Time.Clock
-
+import Data.Function (on)
 playerSpeed :: Double
 playerSpeed = 100.0
 
 initObjs :: M.Map ObjectName GameObject
 initObjs = M.fromList [ ("player", def { objType = Player, objPos = (0,0), objRot = Degree 0, objRender = Circle 5.0 })
-                      , ("boxes", GameObjects [])
+                      , ("boxes", def { objPos = (10, 10), objRender = Circle 10.0})
                       ]
 initGameState = GameState { objs = initObjs
                           , collisionObjs = M.empty
                           }
-              
+
 
 initStatus :: GameStatus
 initStatus = GameNotStarted
@@ -110,21 +110,58 @@ playerMoveRule (obj@(GameObject {}), status) userInput dt =
     in (newObj, status)
 playerMoveRule x _ _ = x
 
+-- at least O(N^2) implementation
 collisionRule :: CollisionRuleFunc
-collisionRule (gameState, status) userInput dt =
+collisionRule r@(gameState, _) userInput dt =
     let
         t = realToFrac dt
-    in "collisionRule not implemented" `trace` (gameState, status)
+        collidable = collisionObjs gameState
+        gameObjs = objs gameState
+    in M.foldlWithKey' (\state (obj :: String) collisionInfo1 ->
+                        let collidedObj = M.foldlWithKey'
+                                          (\acc obj2 collisionInfo2 ->
+                                               let
+                                                   collideWith :: CollisionType -> CollisionType -> Bool
+                                                   collideWith (CircleCollision posA radiusA) (CircleCollision posB radiusB) =
+                                                       let Position aX aY = posA
+                                                           Position bX bY = posB
+                                                           distanceSquared =  ((aX - bX) ** 2) + ((aY - bY) ** 2)
+                                                       in distanceSquared < (radiusA ** 2) ||
+                                                          distanceSquared < (radiusB ** 2)
+                                                   collideWith (BoxCollision posA widthA heightA) (BoxCollision posB widthB heightB) =
+                                                       let Position aX aY = posA
+                                                           Position bX bY = posB
+                                                       in ((abs (aX - bX)) * 2 < widthA + widthB) &&
+                                                              ((abs (aY - bY)) * 2 < heightA + widthB)
+                                                   collideWith (BoxCollision posA widthA heightA) (CircleCollision posB radiusB) =
+                                                       let Position aX aY = posA
+                                                           Position bX bY = posB
+                                                           circleCenterInBox = bX >= aX && bY >= aY && bX <= aX + widthA && bY <= aY + heightA
+                                                           distanceSquared (Position x1 y1) (Position x2 y2) =  ((x1 - x2) ** 2) + ((y1 - y2) ** 2)
+                                                           intersectCircle pos1 pos2 radius = distanceSquared pos1 pos2 < (radius ** 2)
+                                                       in circleCenterInBox ||
+                                                          intersectCircle posA posB radiusB ||
+                                                          intersectCircle (Position (aX + heightA) aY) posB radiusB ||
+                                                          intersectCircle (Position aX (aY + widthA)) posB radiusB ||
+                                                          intersectCircle (Position (aX + heightA) (aY + widthA)) posB radiusB
+                                                   collideWith a@(CircleCollision _ _) b@(BoxCollision _ _ _) = collideWith b a
+                                                   collided :: Bool
+                                                   collided = collideWith (collisionInfo collisionInfo1) (collisionInfo collisionInfo2)
+                                               in if collided && (obj2 /= obj)
+                                                  then obj2:acc
+                                                  else acc
+                                          ) [] collidable
+                        in foldl (\acc obj2 -> case (M.lookup obj2 collidable) >>= collisionCallback of
+                                                 Just (CollisionCallback callback) -> callback obj2 obj acc
+                                                 Nothing -> acc
+                                 ) state collidedObj
+                     ) r collidable
                        
 exitRule :: StatusRuleFunc
 exitRule status userInput =
     let
         keyMap = pressedKeys userInput
-        ctrlC = case ctrlPressed keyMap of
-                  True -> case keyPressed keyMap Key'C of
-                            True -> True
-                            False -> False
-                  False -> False
+        ctrlC = ctrlPressed keyMap && keyPressed keyMap Key'C 
     in
       case ctrlC of
         True -> GameExit GameExitSuccess

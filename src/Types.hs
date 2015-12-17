@@ -36,15 +36,15 @@ instance Def GameObject where
                      , delete = False -- mark for deletion
                      }
 
-data ObjectType = Player | Box | OtherObj
+data ObjectType = Player | Box | OtherObj deriving Show
 
 data Config = Config { isFullscreen :: Bool
                      , width :: Int
                      , height :: Int
                      }
-type ThisObject = GameObject
-type OtherObject = GameObject
-newtype CollisionCallback = CollisionCallback (ThisObject -> OtherObject -> ThisObject)
+type ThisObject = String
+type OtherObject = String
+newtype CollisionCallback = CollisionCallback (ThisObject -> OtherObject -> (GameState, GameStatus) -> (GameState, GameStatus))
 type Up = Bool
 type Down = Bool
 type Left = Bool
@@ -58,10 +58,10 @@ data UserInput = UserInput { directions  :: Directions
                            , pressedKeys :: PressedKeys Key
                            }
 
-type Position = (Double, Double)
+data Position = Position Double Double deriving Show
 type Radius = Double
 type Box = (Position, Position) -- ((Low,Low) (High, High))
-data Angle = Degree Double | Radian Double
+data Angle = Degree Double | Radian Double deriving Show
 
 data GameState = GameState { objs :: M.Map ObjectName GameObject
                            , collisionObjs :: M.Map ObjectName CollisionOption
@@ -80,8 +80,9 @@ data ActionState = ActionState { currentActionTime :: TimeDiff
 data ActionFinished = ActionFinished | ActionNotFinished
 data ActionType = ActionMove
 data CollisionObj = CollisionObj GameObject CollisionOption
-data CollisionOption = CollisionOption { collisionType :: CollisionType
-                                       , collisionCallback :: CollisionCallback
+data CollisionOption = CollisionOption { collisionInfo :: CollisionType
+                                       , collisionUseObjPos :: Bool
+                                       , collisionCallback :: Maybe CollisionCallback
                                        }
 
 data GameObject = GameObject { objType :: ObjectType
@@ -92,9 +93,10 @@ data GameObject = GameObject { objType :: ObjectType
                              , visible :: Bool
                              , delete :: Bool -- mark for deletion
                              }
-                | GameObjects [GameObject]
-
-data CollisionType = BoxCollision Box | CircleCollision Position Radius
+                | GameObjects [GameObject] deriving Show
+type Width = Double
+type Height = Double
+data CollisionType = BoxCollision Position Width Height | CircleCollision Position Radius
 
 
 class RuleFunc a where
@@ -122,7 +124,7 @@ instance RuleFunc CollisionRule where
 type ObjectRuleFunc = (GameObject, GameStatus) -> UserInput -> NominalDiffTime -> (GameObject, GameStatus)
 type StatusRuleFunc = GameStatus -> UserInput -> GameStatus
 type CollisionRuleFunc = Rule
-    
+
 type Rule = (GameState, GameStatus) -> UserInput -> NominalDiffTime -> (GameState, GameStatus)
 
 
