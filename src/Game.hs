@@ -72,7 +72,11 @@ gameUpdate win userInput glossState config initTime = do
   return $ do
     action <- renderGame win glossState config <$> result
     status <- processStatus <$> result
-    return (action >> status)
+    return $ do
+             state <- action
+             status
+             return state
+
 
 
 processStatus :: (GameState, GameStatus) -> IO ()

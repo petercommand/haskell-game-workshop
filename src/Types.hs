@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExistentialQuantification, RankNTypes, FlexibleInstances #-}
 module Types where
 
 import qualified Data.Map.Lazy as M
@@ -26,7 +26,7 @@ instance Def Config where
                  , height = 600
                  }
 
-instance Def GameObject where
+instance Def (GameObject Picture) where
     def = GameObject { objType = OtherObj
                      , objPos = (0, 0)
                      , objRot = Degree 0
@@ -62,8 +62,9 @@ data Position = Position Double Double deriving Show
 type Radius = Double
 type Box = (Position, Position) -- ((Low,Low) (High, High))
 data Angle = Degree Double | Radian Double deriving Show
-
-data GameState = GameState { objs :: M.Map ObjectName GameObject
+data PolyObject = forall a. Renderable a => PolyObject (GameObject a)
+           
+data GameState = GameState { objs :: M.Map ObjectName PolyObject
                            , collisionObjs :: M.Map ObjectName CollisionOption
                            , objActions :: M.Map ObjectName ObjectAction
                            }
@@ -79,21 +80,31 @@ data ActionState = ActionState { currentActionTime :: TimeDiff
                                }
 data ActionFinished = ActionFinished | ActionNotFinished
 data ActionType = ActionMove
-data CollisionObj = CollisionObj GameObject CollisionOption
+data CollisionObj a = CollisionObj (GameObject a) CollisionOption
 data CollisionOption = CollisionOption { collisionInfo :: CollisionType
                                        , collisionUseObjPos :: Bool
                                        , collisionCallback :: Maybe CollisionCallback
                                        }
 
-data GameObject = GameObject { objType :: ObjectType
-                             , objPos :: (Double, Double)
-                             , objRot :: Angle
-                             , objScale :: (Double, Double)
-                             , objRender :: Picture
-                             , visible :: Bool
-                             , delete :: Bool -- mark for deletion
-                             }
-                | GameObjects [GameObject] deriving Show
+class Renderable a where
+    toPicture :: a -> Picture
+    nextFrame :: GameObject a -> GameObject a
+
+instance Renderable Picture where
+    toPicture = id
+    nextFrame = id
+
+data Renderable a => GameObject a = GameObject { objType :: ObjectType
+                                               , objPos :: (Double, Double)
+                                               , objRot :: Angle
+                                               , objScale :: (Double, Double)
+                                               , objRender :: a
+                                               , visible :: Bool
+                                               , delete :: Bool -- mark for deletion
+                                               }
+                                  | GameObjects [GameObject a]
+                
+
 type Width = Double
 type Height = Double
 data CollisionType = BoxCollision Position Width Height | CircleCollision Position Radius
@@ -112,16 +123,16 @@ data CollisionRule = CollisionRule CollisionRuleFunc
 instance RuleFunc ObjectRule where
    generateRule (ObjectRule name f) =
        \(gs@(GameState { objs = objMap }), status) userInput dt -> case M.lookup name objMap of
-                                                                Just ori -> let (newObj, newStatus) = f (ori, status) userInput dt
-                                                                                newMap = M.adjust (const newObj) name objMap
-                                                                            in (gs { objs = newMap}, newStatus)
-                                                                Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (gs, status)
+                                                                     Just ori -> let (newObj, newStatus) = f (ori, status) userInput dt
+                                                                                     newMap = M.adjust (const newObj) name objMap
+                                                                                 in (gs { objs = newMap}, newStatus)
+                                                                     Nothing -> ("object \"" <> name <> "\" not found in object map") `trace` (gs, status)
 instance RuleFunc StatusRule where
     generateRule (StatusRule f) = \(gameState, status) userInput dt -> (gameState, f status userInput)
 instance RuleFunc CollisionRule where
     generateRule (CollisionRule f) = f
 
-type ObjectRuleFunc = (GameObject, GameStatus) -> UserInput -> NominalDiffTime -> (GameObject, GameStatus)
+type ObjectRuleFunc = (PolyObject, GameStatus) -> UserInput -> NominalDiffTime -> (PolyObject, GameStatus)
 type StatusRuleFunc = GameStatus -> UserInput -> GameStatus
 type CollisionRuleFunc = Rule
 
