@@ -9,7 +9,8 @@ import qualified Data.Set as Set
 import Debug.Trace
 import Data.Time.Clock
 import Control.Monad.State.Lazy
-
+import GHC.Float
+    
 class Def a where
     def :: a -- default value
 
@@ -35,7 +36,17 @@ instance Def (GameObject Picture) where
                      , visible = True
                      , delete = False -- mark for deletion
                      }
+instance Def (GameObject SineAnimate) where
+    def = GameObject { objType = OtherObj
+                     , objPos = (0, 0)
+                     , objRot = Degree 0
+                     , objScale = (0, 0)
+                     , objRender = SineAnimate 1
+                     , visible = True
+                     , delete = False
+                     }
 
+          
 data ObjectType = Player | Box | OtherObj deriving Show
 
 data Config = Config { isFullscreen :: Bool
@@ -63,10 +74,14 @@ type Radius = Double
 type Box = (Position, Position) -- ((Low,Low) (High, High))
 data Angle = Degree Double | Radian Double deriving Show
 data PolyObject = forall a. Renderable a => PolyObject (GameObject a)
-           
+                | PolyObjects [PolyObject]
+data GameDebugInfo = GameDebugInfo { updateCount :: Int } deriving Show
+
 data GameState = GameState { objs :: M.Map ObjectName PolyObject
                            , collisionObjs :: M.Map ObjectName CollisionOption
                            , objActions :: M.Map ObjectName ObjectAction
+                           , diffTime :: NominalDiffTime
+                           , debugInfo :: Maybe GameDebugInfo
                            }
 
 data ObjectAction = ObjectAction ObjectName ActionInfo (State ActionState ActionFinished)
@@ -85,14 +100,21 @@ data CollisionOption = CollisionOption { collisionInfo :: CollisionType
                                        , collisionUseObjPos :: Bool
                                        , collisionCallback :: Maybe CollisionCallback
                                        }
+data SineAnimate = SineAnimate { currentTime :: Double } deriving Show
 
+instance Renderable SineAnimate where
+    toPicture x = Circle $ (* 10) (sin $ (double2Float $ currentTime x))
+    nextFrame x dt = let cTime = currentTime (objRender x) + realToFrac dt
+                         newRender = (objRender x) { currentTime = cTime }
+                     in x { objRender = newRender }
+                     
 class Renderable a where
     toPicture :: a -> Picture
-    nextFrame :: GameObject a -> GameObject a
+    nextFrame :: GameObject a -> NominalDiffTime -> GameObject a
 
 instance Renderable Picture where
     toPicture = id
-    nextFrame = id
+    nextFrame = const
 
 data Renderable a => GameObject a = GameObject { objType :: ObjectType
                                                , objPos :: (Double, Double)
@@ -102,7 +124,7 @@ data Renderable a => GameObject a = GameObject { objType :: ObjectType
                                                , visible :: Bool
                                                , delete :: Bool -- mark for deletion
                                                }
-                                  | GameObjects [GameObject a]
+
                 
 
 type Width = Double

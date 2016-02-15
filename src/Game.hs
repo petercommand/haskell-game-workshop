@@ -21,12 +21,14 @@ import Data.Function (on)
 playerSpeed :: Double
 playerSpeed = 100.0
 
-initObjs :: M.Map ObjectName GameObject
-initObjs = M.fromList [ ("player", def { objType = Player, objPos = (0,0), objRot = Degree 0, objRender = Circle 5.0 })
-                      , ("boxes", def { objPos = (10, 10), objRender = Circle 10.0})
+initObjs :: M.Map ObjectName PolyObject
+initObjs = M.fromList [ ("player", PolyObject $ (def :: GameObject SineAnimate) { objType = Player, objPos = (0,0), objRot = Degree 0 })
+                      , ("boxes", PolyObject $ (def :: GameObject Picture) { objPos = (10, 10), objRender = Circle 10.0})
                       ]
 initGameState = GameState { objs = initObjs
                           , collisionObjs = M.empty
+                          , diffTime = 0
+                          , debugInfo = Nothing -- Just $ GameDebugInfo { updateCount = 0 }
                           }
 
 
@@ -64,18 +66,16 @@ startGame config = do
 
 
 gameUpdate :: Window -> Signal UserInput -> State -> Config -> UTCTime -> SignalGen (Signal (IO ())) 
-gameUpdate win userInput glossState config initTime = do
+gameUpdate win userInput glossState config initTime = mdo
   time <- effectful getCurrentTime
   lastTime <- delay initTime time
   let deltaTime = diffUTCTime <$> time <*> lastTime
-  result <- transfer2 (initGameState, initStatus) ruleUpdate userInput deltaTime
+  lastRenderGameState <- delay initGameState afterRenderGameState
+  result <- transfer3 (initGameState, initStatus) ruleUpdate userInput deltaTime lastRenderGameState
+  afterRenderGameState <- effectful1 (renderGame win glossState config) result
   return $ do
-    action <- renderGame win glossState config <$> result
     status <- processStatus <$> result
-    return $ do
-             state <- action
-             status
-             return state
+    return $ status >> return ()
 
 
 
@@ -89,8 +89,10 @@ processStatus (_, status) = case status of
   
 
 
-ruleUpdate :: UserInput -> NominalDiffTime -> (GameState, GameStatus) -> (GameState, GameStatus)
-ruleUpdate userInput dt init = foldr (\f acc -> f acc userInput dt) init rules
+ruleUpdate :: UserInput -> NominalDiffTime -> GameState -> (GameState, GameStatus) -> (GameState, GameStatus)
+ruleUpdate userInput dt lastRenderState (_, initStatus) =
+    let state = lastRenderState { diffTime = dt }
+    in foldr (\f acc -> f acc userInput dt) (state, initStatus) rules
 
 rules :: [Rule]
 rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "player" playerMoveRule
@@ -102,7 +104,7 @@ rules = map (\(ToRuleFunc f) -> generateRule f) [ ToRuleFunc $ ObjectRule "playe
 
 
 playerMoveRule :: ObjectRuleFunc
-playerMoveRule (obj@(GameObject {}), status) userInput dt =
+playerMoveRule (obj, status) userInput dt =
     let
         t = realToFrac dt
         newObj = case directions userInput of
@@ -112,9 +114,8 @@ playerMoveRule (obj@(GameObject {}), status) userInput dt =
                    Directions _ _ _ True -> moveObj obj (playerSpeed * t, 0)
                    Directions False False False False -> obj
     in (newObj, status)
-playerMoveRule x _ _ = x
 
--- at least O(N^2) implementation
+
 collisionRule :: CollisionRuleFunc
 collisionRule r@(gameState, _) userInput dt =
     let
@@ -172,7 +173,7 @@ exitRule status userInput =
         False -> status
         
 
-moveObj :: GameObject -> (Double, Double) -> GameObject
-moveObj obj@(GameObject {}) (dX, dY) = let (x, y) = objPos obj
-                                       in obj { objPos = (x + dX, y + dY) }
-moveObj (GameObjects x) delta = GameObjects (map (\x -> moveObj x delta) x)
+moveObj :: PolyObject -> (Double, Double) -> PolyObject
+moveObj (PolyObject obj@(GameObject {})) (dX, dY) = let (x, y) = objPos obj
+                                                    in PolyObject $ obj { objPos = (x + dX, y + dY) }
+moveObj (PolyObjects x) delta = PolyObjects (map (\x -> moveObj x delta) x)
