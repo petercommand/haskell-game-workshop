@@ -119,7 +119,7 @@ playerMoveRule (obj, status) userInput dt =
 collisionRule :: CollisionRuleFunc
 collisionRule r@(gameState, _) userInput dt =
     let
-        t = realToFrac dt
+        t = realToFrac dt :: Double
         collidable = collisionObjs gameState
         gameObjs = objs gameState
     in M.foldlWithKey' (\state (obj :: String) collisionInfo1 ->

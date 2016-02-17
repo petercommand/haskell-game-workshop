@@ -75,6 +75,7 @@ type Box = (Position, Position) -- ((Low,Low) (High, High))
 data Angle = Degree Double | Radian Double deriving Show
 data PolyObject = forall a. Renderable a => PolyObject (GameObject a)
                 | PolyObjects [PolyObject]
+
 data GameDebugInfo = GameDebugInfo { updateCount :: Int } deriving Show
 
 data GameState = GameState { objs :: M.Map ObjectName PolyObject
